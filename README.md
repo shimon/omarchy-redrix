@@ -24,6 +24,7 @@ covers the Omarchy side and a few findings that apply to any distro.
 | Battery longevity | Charges to 100 % | `redrix-charge-limit` (opt-in): stop at 80 %, resume below 75 % |
 | Brightness, volume, mute, mic mute, kbd backlight, play/pause, screenshot keys | Work (Omarchy bindings) | - |
 | Touchpad, touchscreen, Wi-Fi, Bluetooth, GPU (i915 + GuC/HuC) | Work | - |
+| Suspend / resume (s2idle) | Works: lid close/open, 99.6 % of a 6.6-minute suspend in hardware sleep (S0ix), all devices restored. The power-button LED goes **off** while suspended | - |
 | Power profiles | Omarchy already switches performance (AC) / balanced (battery) | - |
 | Lock key | **Suspends immediately** (sends `KEY_SLEEP`) | Documented; [redrix-linux](https://github.com/maximeallanic/redrix-linux) has a fix |
 | Fingerprint reader | Not supported by Arch's libfprint | Not covered; see redrix-linux |
