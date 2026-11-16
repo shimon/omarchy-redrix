@@ -77,11 +77,21 @@ fi
 # --- Hyprland bindings -------------------------------------------------------
 marker="-- omarchy-redrix: Chromebook top row"
 bindings="$cfg/hypr/bindings.lua"
+
+# Bindings can live in any file under ~/.config/hypr (e.g. local.lua), so ask
+# the running compositor when possible and otherwise search every file.
+top_row_bound() {
+  if command -v hyprctl >/dev/null 2>&1 && [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
+    hyprctl binds 2>/dev/null | grep -qE 'key: XF86(FullScreen|LaunchA)$' && return 0
+  fi
+  cat "$cfg"/hypr/*.lua 2>/dev/null | grep -qF -- "$marker" && return 0
+  cat "$cfg"/hypr/*.lua 2>/dev/null | grep -qE '^[^-]*"(SHIFT \+ )?XF86(FullScreen|LaunchA)"'
+}
 if (( do_bindings )); then
   if [[ ! -f $bindings ]]; then
     say "-- Hyprland: $bindings not found; skipping key bindings"
-  elif grep -qF -- "$marker" "$bindings" || grep -qE '^[^-]*"XF86(FullScreen|LaunchA)"' "$bindings"; then
-    say "-- Hyprland: top-row keys already bound in $bindings; leaving it alone"
+  elif top_row_bound; then
+    say "-- Hyprland: Fullscreen/Overview keys already bound; leaving bindings alone"
   else
     say "-- Hyprland: Fullscreen key -> fullscreen, Overview -> apps, Shift+Overview -> Omarchy menu"
     if (( ! dry_run )); then

@@ -184,7 +184,13 @@ if have busctl; then
   sk=$(busctl get-property org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager HandleSuspendKey 2>/dev/null | awk '{print $2}' | tr -d '"')
   [[ $sk == suspend ]] && info "The top-row lock key sends KEY_SLEEP: systemd-logind suspends immediately (HandleSuspendKey=suspend)"
 fi
-if [[ -f $cfg/hypr/bindings.lua ]] && grep -q 'XF86FullScreen' "$cfg/hypr/bindings.lua"; then
+# Ask the running compositor when possible: bindings may live in any file.
+if have hyprctl && [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
+  bound=$(hyprctl binds 2>/dev/null | grep -cE 'key: XF86(FullScreen|LaunchA)$')
+else
+  bound=$(cat "$cfg"/hypr/*.lua 2>/dev/null | grep -cE '^[^-]*"(SHIFT \+ )?XF86(FullScreen|LaunchA)"')
+fi
+if (( bound > 0 )); then
   ok "Hyprland bindings for the Fullscreen/Overview keys present"
 else
   info "Fullscreen and Overview keys unbound (user-config/apply adds bindings)"
