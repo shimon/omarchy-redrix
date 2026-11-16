@@ -13,7 +13,7 @@
 
 pkgname=redrix-thermald
 pkgver=2026.11.16
-pkgrel=1
+pkgrel=2
 pkgdesc="Run thermald with a CPU-package-only guard instead of the ChromeOS DPTF tables (HP Elite Dragonfly Chromebook)"
 arch=('any')
 url="https://github.com/shimon/omarchy-redrix"
@@ -21,13 +21,16 @@ license=('MIT')
 depends=('thermald')
 conflicts=('redrix-tweaks')
 install=redrix-thermald.install
-source=('10-redrix-package-guard.conf'
+source=('LICENSE'
+        '10-redrix-package-guard.conf'
         'thermal-conf.xml')
-sha256sums=('62819930c2a87c1ab48ca03efb70180a72b1e2c85ab0cf8bf51bb08e955305b7'
+sha256sums=('8f07e5865a84a895a09f26aee71da1c787a7e1572308280eb208369f9fb3d4b5'
+            '62819930c2a87c1ab48ca03efb70180a72b1e2c85ab0cf8bf51bb08e955305b7'
             '7537100d4e63f9db96cc457717aff2922443aaf005a1ef4872e7a537c0a2b602')
 
 package() {
   install -Dm644 10-redrix-package-guard.conf \
     "$pkgdir/usr/lib/systemd/system/thermald.service.d/10-redrix-package-guard.conf"
   install -Dm644 thermal-conf.xml "$pkgdir/usr/share/redrix-thermald/thermal-conf.xml"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }

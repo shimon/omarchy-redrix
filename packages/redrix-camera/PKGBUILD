@@ -11,7 +11,7 @@
 
 pkgname=redrix-camera
 pkgver=2026.11.16
-pkgrel=1
+pkgrel=2
 pkgdesc="Webcam support (libcamera/PipeWire) and OV5675 tuning for the HP Elite Dragonfly Chromebook"
 arch=('any')
 url="https://github.com/shimon/omarchy-redrix"
@@ -21,13 +21,16 @@ optdepends=('libcamera-tools: cam for testing the webcam from a terminal')
 conflicts=('redrix-tweaks')
 backup=('etc/libcamera/ipa/simple/ov5675.yaml')
 install=redrix-camera.install
-source=('70-redrix-camera-dma-heap.rules'
+source=('LICENSE'
+        '70-redrix-camera-dma-heap.rules'
         'ov5675.yaml')
-sha256sums=('34010a3884c12b7e7874cff83ee1756b4b11707cfdc7c571bdd895555b4ce6c0'
+sha256sums=('8f07e5865a84a895a09f26aee71da1c787a7e1572308280eb208369f9fb3d4b5'
+            '34010a3884c12b7e7874cff83ee1756b4b11707cfdc7c571bdd895555b4ce6c0'
             '4c0ea29f44aac8cb244cbd566aed24a17a85ddd5c9797ec947eae8b62bbb754d')
 
 package() {
   install -Dm644 70-redrix-camera-dma-heap.rules \
     "$pkgdir/usr/lib/udev/rules.d/70-redrix-camera-dma-heap.rules"
   install -Dm644 ov5675.yaml "$pkgdir/etc/libcamera/ipa/simple/ov5675.yaml"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }
