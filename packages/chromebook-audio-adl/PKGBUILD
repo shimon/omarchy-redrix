@@ -1,0 +1,50 @@
+# Audio for Alder Lake Chromebooks using SOF (tested: REDRIX, sof-rt5682 with
+# 4x MAX98390 + RT5682S). Packages what WeirdTreeThing's setup-audio does on
+# Alder Lake, because setup-audio refuses to run on Omarchy:
+#   - ChromeOS-derived UCM profiles (alsa-ucm-conf-cros)
+#   - snd_sof_intel_hda_generic dmic_num=4 (no NHLT table, mics not detected)
+#   - WirePlumber: hide Pro Audio profile on SOF cards, raise ALSA headroom
+#
+# Both upstream repos are pinned to reviewed commits. To update: bump the
+# hashes and pkgver, review the upstream diff, rebuild.
+#
+# Note: the REDRIX UCM profile caps the speaker amps (volume, 2.2 A current
+# limit) from its BootSequence, which only runs on `alsactl init`. The
+# install script runs that once; see chromebook-audio-adl.install.
+
+pkgname=chromebook-audio-adl
+pkgver=20260924
+pkgrel=1
+pkgdesc="ChromeOS UCM profiles, DMIC and WirePlumber config for Alder Lake Chromebook SOF audio"
+arch=('any')
+url="https://github.com/WeirdTreeThing/chromebook-linux-audio"
+license=('BSD-3-Clause')
+depends=('alsa-ucm-conf' 'alsa-utils' 'sof-firmware' 'wireplumber')
+makedepends=('git')
+conflicts=('chromebook-audio-cros')
+replaces=('chromebook-audio-cros')
+install=chromebook-audio-adl.install
+_ucm_commit=109a49349d5a9cd1a3a3e42c88da67453bc35ce9    # alsa-ucm-conf-cros, 2026-09-24
+_script_commit=84b700e271145df82ae71d0497af11705a2bb166 # chromebook-linux-audio, 2026-10-05
+source=("alsa-ucm-conf-cros::git+https://github.com/WeirdTreeThing/alsa-ucm-conf-cros.git#commit=${_ucm_commit}"
+        "chromebook-linux-audio::git+https://github.com/WeirdTreeThing/chromebook-linux-audio.git#commit=${_script_commit}")
+sha256sums=('SKIP' 'SKIP')
+
+package() {
+  # UCM profiles. These only add card/codec directories that alsa-ucm-conf
+  # does not ship; pacman reports a file conflict if that ever changes.
+  install -d "$pkgdir/usr/share/alsa/ucm2"
+  cp -r --no-preserve=ownership alsa-ucm-conf-cros/ucm2/. "$pkgdir/usr/share/alsa/ucm2/"
+  find "$pkgdir/usr/share/alsa/ucm2" -type d -exec chmod 755 {} +
+  find "$pkgdir/usr/share/alsa/ucm2" -type f -exec chmod 644 {} +
+
+  install -Dm644 chromebook-linux-audio/conf/sof/adl-sof.conf \
+    "$pkgdir/usr/lib/modprobe.d/chromebook-adl-sof.conf"
+
+  install -Dm644 -t "$pkgdir/usr/share/wireplumber/wireplumber.conf.d/" \
+    chromebook-linux-audio/conf/common/51-disable-pro-audio.conf \
+    chromebook-linux-audio/conf/common/51-increase-headroom.conf
+
+  install -Dm644 alsa-ucm-conf-cros/LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE.alsa-ucm-conf-cros"
+  install -Dm644 chromebook-linux-audio/LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE.chromebook-linux-audio"
+}

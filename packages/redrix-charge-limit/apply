@@ -1,0 +1,15 @@
+#!/bin/sh
+# Apply the battery charge window from /etc/redrix-charge-limit.conf.
+# Safe to run repeatedly; does nothing until both the battery and the
+# ChromeOS EC charge-control attributes exist.
+START=75
+END=80
+# shellcheck source=/dev/null
+[ -r /etc/redrix-charge-limit.conf ] && . /etc/redrix-charge-limit.conf
+B=/sys/class/power_supply/BAT0
+[ -w "$B/charge_control_end_threshold" ] || exit 0
+echo "$END" > "$B/charge_control_end_threshold"
+if [ -w "$B/charge_control_start_threshold" ]; then
+  echo "$START" > "$B/charge_control_start_threshold"
+fi
+exit 0

@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: ShellCheck scripts and pacman install files
+        run: shellcheck -x scripts/diagnose user-config/apply packages/*/apply packages/*/*.install
+
+  makepkg:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [chromebook-audio-adl, redrix-camera, redrix-thermald, redrix-charge-limit]
+    steps:
+      - name: Install build tools
+        run: pacman -Syu --noconfirm --needed git namcap
+      - uses: actions/checkout@v4
+      - name: Build (dependency check skipped; packages are data-only)
+        run: |
+          useradd -m builder
+          chown -R builder "$GITHUB_WORKSPACE"
+          cd "packages/${{ matrix.package }}"
+          su builder -c "makepkg --nodeps --noconfirm"
+      - name: namcap
+        run: |
+          cd "packages/${{ matrix.package }}"
+          namcap PKGBUILD *.pkg.tar.zst || true

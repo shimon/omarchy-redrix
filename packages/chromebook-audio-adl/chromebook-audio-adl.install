@@ -1,0 +1,19 @@
+# shellcheck shell=bash
+# pacman install script for chromebook-audio-adl
+
+post_install() {
+  # Apply the UCM BootSequence (on REDRIX: per-amp volume caps and 2.2 A
+  # current limits) and save it so alsa-restore keeps it across boots.
+  if command -v alsactl >/dev/null 2>&1; then
+    alsactl init >/dev/null 2>&1
+    alsactl store >/dev/null 2>&1
+  fi
+  echo ":: chromebook-audio-adl: reboot (or reload the SOF modules) so the"
+  echo "   internal microphones are detected, then check that PipeWire shows"
+  echo "   real Speaker/Headphones sinks instead of 'Dummy Output'."
+}
+
+post_upgrade() {
+  echo ":: chromebook-audio-adl: if the UCM profiles changed, run"
+  echo "   'sudo alsactl init && sudo alsactl store' and restart PipeWire."
+}

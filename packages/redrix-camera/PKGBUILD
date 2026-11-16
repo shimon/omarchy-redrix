@@ -1,0 +1,33 @@
+# Internal MIPI webcam on the HP Elite Dragonfly Chromebook (REDRIX):
+# IPU6 ISYS + libcamera software ISP (GPU-accelerated) + PipeWire.
+#
+# - pulls in the libcamera PipeWire plugin and IPA modules
+# - udev rule giving the desktop user access to /dev/dma_heap/system
+# - colour tuning for the OV5675 sensor variant (some units ship a Hi-556
+#   instead; the file is simply not used there)
+#
+# Browsers additionally need the WebRtcPipeWireCamera feature; see
+# user-config/apply in this repo.
+
+pkgname=redrix-camera
+pkgver=2026.11.16
+pkgrel=1
+pkgdesc="Webcam support (libcamera/PipeWire) and OV5675 tuning for the HP Elite Dragonfly Chromebook"
+arch=('any')
+url="https://github.com/shimon/omarchy-redrix"
+license=('MIT')
+depends=('pipewire-libcamera' 'libcamera-ipa')
+optdepends=('libcamera-tools: cam for testing the webcam from a terminal')
+conflicts=('redrix-tweaks')
+backup=('etc/libcamera/ipa/simple/ov5675.yaml')
+install=redrix-camera.install
+source=('70-redrix-camera-dma-heap.rules'
+        'ov5675.yaml')
+sha256sums=('34010a3884c12b7e7874cff83ee1756b4b11707cfdc7c571bdd895555b4ce6c0'
+            '4c0ea29f44aac8cb244cbd566aed24a17a85ddd5c9797ec947eae8b62bbb754d')
+
+package() {
+  install -Dm644 70-redrix-camera-dma-heap.rules \
+    "$pkgdir/usr/lib/udev/rules.d/70-redrix-camera-dma-heap.rules"
+  install -Dm644 ov5675.yaml "$pkgdir/etc/libcamera/ipa/simple/ov5675.yaml"
+}

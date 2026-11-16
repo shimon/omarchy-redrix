@@ -1,0 +1,22 @@
+# shellcheck shell=bash
+# pacman install script for redrix-thermald
+
+_restart_thermald() {
+  systemctl daemon-reload >/dev/null 2>&1
+  systemctl try-restart thermald.service >/dev/null 2>&1
+}
+
+post_install() {
+  _restart_thermald
+  echo ":: redrix-thermald: thermald now guards only the CPU package (90 C)."
+  echo "   If PL1 was already lowered this boot it returns to 15 W at next boot"
+  echo "   (or: echo 15000000 | sudo tee /sys/class/powercap/intel-rapl:0/constraint_0_power_limit_uw)."
+}
+
+post_upgrade() {
+  _restart_thermald
+}
+
+post_remove() {
+  _restart_thermald
+}

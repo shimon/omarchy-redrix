@@ -1,0 +1,4 @@
+# Apply the battery charge window once both the battery and the ChromeOS EC
+# charge-control driver are present (whichever appears last triggers it).
+ACTION=="bind", SUBSYSTEM=="platform", DRIVER=="cros-charge-control", RUN+="/usr/lib/redrix-charge-limit/apply"
+ACTION=="add", SUBSYSTEM=="power_supply", KERNEL=="BAT0", RUN+="/usr/lib/redrix-charge-limit/apply"

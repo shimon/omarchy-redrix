@@ -1,0 +1,33 @@
+# thermald without the ChromeOS DPTF tables on the HP Elite Dragonfly
+# Chromebook (REDRIX).
+#
+# Omarchy installs thermald on Intel laptops. On REDRIX it exports coreboot's
+# DPTF passive trips (DDR sensor 45 C) into thermal-conf.xml.auto and, under
+# sustained load, holds PL1 at 13 W while the package sits around 64 C.
+# Dropping --adaptive does not help: thermald still exports the ACPI tables
+# unless it is given its own config file. This package does exactly that,
+# with a config that only guards the CPU package at 90 C.
+#
+# Measured (12-thread load, PD charger): 13 W -> ~1.53 GHz all-core, package
+# ~64 C; 15 W -> ~1.75-1.8 GHz, package ~71 C. Bursts (PL2 55 W) unchanged.
+
+pkgname=redrix-thermald
+pkgver=2026.11.16
+pkgrel=1
+pkgdesc="Run thermald with a CPU-package-only guard instead of the ChromeOS DPTF tables (HP Elite Dragonfly Chromebook)"
+arch=('any')
+url="https://github.com/shimon/omarchy-redrix"
+license=('MIT')
+depends=('thermald')
+conflicts=('redrix-tweaks')
+install=redrix-thermald.install
+source=('10-redrix-package-guard.conf'
+        'thermal-conf.xml')
+sha256sums=('62819930c2a87c1ab48ca03efb70180a72b1e2c85ab0cf8bf51bb08e955305b7'
+            '7537100d4e63f9db96cc457717aff2922443aaf005a1ef4872e7a537c0a2b602')
+
+package() {
+  install -Dm644 10-redrix-package-guard.conf \
+    "$pkgdir/usr/lib/systemd/system/thermald.service.d/10-redrix-package-guard.conf"
+  install -Dm644 thermal-conf.xml "$pkgdir/usr/share/redrix-thermald/thermal-conf.xml"
+}

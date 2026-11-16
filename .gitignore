@@ -1,0 +1,11 @@
+# makepkg output
+packages/*/src/
+packages/*/pkg/
+packages/*/*.pkg.tar.*
+packages/*/*.log
+packages/chromebook-audio-adl/alsa-ucm-conf-cros/
+packages/chromebook-audio-adl/chromebook-linux-audio/
+# local captures and backups
+*.ppm
+*.png
+*.bak.*

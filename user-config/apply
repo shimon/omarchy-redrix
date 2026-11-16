@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+# omarchy-redrix user-config: per-user settings that packages must not touch.
+#
+#   - Chromium / Chrome flags: PipeWire camera + VA-API video decode, merged
+#     into the single --enable-features line Chromium honours
+#   - Hyprland bindings for the Chromebook Fullscreen and Overview keys
+#   - (--fix-portal) re-allow camera access for apps the portal has denied
+#
+# Idempotent. Every file it changes is backed up as <file>.bak.<timestamp>.
+#
+# Usage: user-config/apply [--dry-run] [--no-browsers] [--no-bindings] [--fix-portal]
+
+set -euo pipefail
+export LC_ALL=C
+
+dry_run=0 do_browsers=1 do_bindings=1 fix_portal=0
+for arg in "$@"; do
+  case $arg in
+    --dry-run) dry_run=1 ;;
+    --no-browsers) do_browsers=0 ;;
+    --no-bindings) do_bindings=0 ;;
+    --fix-portal) fix_portal=1 ;;
+    -h | --help) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "Unknown option: $arg (see --help)" >&2; exit 2 ;;
+  esac
+done
+
+cfg=${XDG_CONFIG_HOME:-$HOME/.config}
+stamp=$(date +%s)
+say() { printf '%s\n' "$*"; }
+backup() { [[ -f $1 ]] && cp -p "$1" "$1.bak.$stamp" && say "   backup: $1.bak.$stamp"; }
+
+# --- Browsers ----------------------------------------------------------------
+features=(WebRtcPipeWireCamera AcceleratedVideoDecodeLinuxGL AcceleratedVideoDecodeLinuxZeroCopyGL AcceleratedVideoEncoder)
+
+merge_flags() {
+  local file=$1 label=$2 existing merged
+  if [[ ! -f $file ]]; then
+    say "-- $label: creating $file"
+    browsers_changed=1
+    if (( ! dry_run )); then
+      mkdir -p "$(dirname "$file")"
+      printf -- '--enable-features=%s\n' "$(IFS=,; echo "${features[*]}")" > "$file"
+    fi
+    return
+  fi
+  # Union of every feature already listed (on any --enable-features line) and ours.
+  existing=$(sed -n 's/^--enable-features=//p' "$file" | tr ',' '\n' | sed '/^$/d')
+  merged=$(printf '%s\n' "$existing" "${features[@]}" | awk 'NF && !seen[$0]++' | paste -sd,)
+  if [[ $(grep -c '^--enable-features=' "$file") == 1 && $(sed -n 's/^--enable-features=//p' "$file") == "$merged" ]]; then
+    say "-- $label: already up to date"
+    return
+  fi
+  say "-- $label: --enable-features=$merged"
+  browsers_changed=1
+  (( dry_run )) && return
+  backup "$file"
+  # Keep the position of the first --enable-features line; drop the others.
+  awk -v line="--enable-features=$merged" '
+    /^--enable-features=/ { if (!done) { print line; done = 1 } ; next }
+    { print }
+    END { if (!done) print line }' "$file" > "$file.tmp.$stamp"
+  mv "$file.tmp.$stamp" "$file"
+}
+
+browsers_changed=0
+if (( do_browsers )); then
+  found=0
+  if command -v chromium >/dev/null 2>&1; then merge_flags "$cfg/chromium-flags.conf" "Chromium"; found=1; fi
+  if command -v google-chrome-stable >/dev/null 2>&1; then merge_flags "$cfg/chrome-flags.conf" "Chrome"; found=1; fi
+  (( found )) || say "-- No Chromium or Google Chrome found; skipping browser flags"
+  if (( browsers_changed && ! dry_run )); then
+    say "   Fully quit and restart the browser for the flags to apply."
+  fi
+fi
+
+# --- Hyprland bindings -------------------------------------------------------
+marker="-- omarchy-redrix: Chromebook top row"
+bindings="$cfg/hypr/bindings.lua"
+if (( do_bindings )); then
+  if [[ ! -f $bindings ]]; then
+    say "-- Hyprland: $bindings not found; skipping key bindings"
+  elif grep -qF -- "$marker" "$bindings" || grep -qE '^[^-]*"XF86(FullScreen|LaunchA)"' "$bindings"; then
+    say "-- Hyprland: top-row keys already bound in $bindings; leaving it alone"
+  else
+    say "-- Hyprland: Fullscreen key -> fullscreen, Overview -> apps, Shift+Overview -> Omarchy menu"
+    if (( ! dry_run )); then
+      backup "$bindings"
+      cat >> "$bindings" <<EOF
+
+$marker
+o.bind("XF86FullScreen", "Full screen", hl.dsp.window.fullscreen({ mode = "fullscreen" }))
+o.bind("XF86LaunchA", "Apps", "omarchy-shell omarchy.dock apps")
+o.bind("SHIFT + XF86LaunchA", "Omarchy menu", { menu = "root" })
+EOF
+      if command -v hyprctl >/dev/null 2>&1 && [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
+        hyprctl reload >/dev/null
+        errors=$(hyprctl configerrors 2>/dev/null)
+        if [[ -n $errors ]]; then
+          say "   Hyprland reported config errors; restoring the backup:"
+          say "$errors"
+          cp -p "$bindings.bak.$stamp" "$bindings"
+          hyprctl reload >/dev/null
+          exit 1
+        fi
+        say "   Hyprland reloaded without errors."
+      fi
+    fi
+  fi
+fi
+
+# --- Camera portal -----------------------------------------------------------
+store=(org.freedesktop.impl.portal.PermissionStore /org/freedesktop/impl/portal/PermissionStore org.freedesktop.impl.portal.PermissionStore)
+perms=$(busctl --user call "${store[@]}" Lookup ss devices camera 2>/dev/null || true)
+denied=$(grep -oE '"[A-Za-z0-9._-]*" 1 "no"' <<<"$perms" | cut -d'"' -f2 || true)
+if [[ -n $denied ]]; then
+  for app in $denied; do
+    if (( fix_portal )); then
+      say "-- Camera portal: allowing '${app:-host apps}'"
+      (( dry_run )) || busctl --user call "${store[@]}" SetPermission sbssas devices true camera "$app" 1 yes
+    else
+      say "-- Camera portal denies '${app:-host apps}' (re-run with --fix-portal to allow it)"
+    fi
+  done
+fi
+
+(( dry_run )) && say "(dry run: nothing was changed)"
+exit 0

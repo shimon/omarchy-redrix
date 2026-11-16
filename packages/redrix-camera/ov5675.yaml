@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: CC0-1.0
+# omarchy-redrix: software-ISP tuning for the REDRIX OV5675 webcam variant.
+#
+# Hand-tuned by eye against a real room in daylight (no colour chart), over
+# five A/B rounds. Without it libcamera uses uncalibrated.yaml: flat, hazy,
+# and green/cyan (grey-world AWB leaves a ~3-7 % green bias on this sensor).
+#
+#   ccm        = 0.78 * diag(1.12, 0.90, 0.87) * saturation(1.5, BT.601 luma)
+#                - 1.5x luma-preserving saturation (raw sensor colour is dull)
+#                - R/G/B gains cancel the green/cyan bias, slightly warm
+#                - 0.78 scale darkens output (AGC meters before the CCM)
+#   blackLevel = 7168 (28/255 on the 16-bit scale): deeper shadows, less haze
+#
+# libcamera reads /etc/libcamera/ipa before /usr/share/libcamera/ipa. Edit
+# this file freely (pacman keeps your changes), then restart WirePlumber:
+#   systemctl --user restart wireplumber
+%YAML 1.1
+---
+version: 1
+algorithms:
+  - BlackLevel:
+      blackLevel: 7168
+  - Awb:
+  - Ccm:
+      ccms:
+        - ct: 5000
+          ccm: [ 1.180, -0.256, -0.050,
+                -0.105,  0.847, -0.040,
+                -0.101, -0.199,  0.979 ]
+  - Adjust:
+  - Agc:
+...

@@ -1,0 +1,30 @@
+# Battery charge window for ChromeOS-EC laptops running MrChromebox firmware
+# (tested: HP Elite Dragonfly Chromebook / REDRIX). Uses the kernel's
+# cros-charge-control driver (charge_control_{start,end}_threshold on BAT0).
+#
+# Opt-in: defaults to stop at 80 %, resume below 75 %. Edit
+# /etc/redrix-charge-limit.conf to change; removing the package restores
+# charging to 100 %.
+
+pkgname=redrix-charge-limit
+pkgver=2026.11.16
+pkgrel=1
+pkgdesc="Battery charge window (default 75-80 %) via cros-charge-control for the HP Elite Dragonfly Chromebook"
+arch=('any')
+url="https://github.com/shimon/omarchy-redrix"
+license=('MIT')
+conflicts=('redrix-tweaks')
+backup=('etc/redrix-charge-limit.conf')
+install=redrix-charge-limit.install
+source=('apply'
+        '71-redrix-charge-limit.rules'
+        'redrix-charge-limit.conf')
+sha256sums=('097dfc4c40965e2f725b1b2890900e2364b275fa745f55e62ffdcb3fda6d27a2'
+            'f2e642a29e19cf55f08c6b4b2fd0bdef46e8a75d0b20be98242c082a028d19f2'
+            'acc85ca528503377329d65cb36e876b80ffb3cc7ceacebbeca9c9523ca1e79e5')
+
+package() {
+  install -Dm755 apply "$pkgdir/usr/lib/redrix-charge-limit/apply"
+  install -Dm644 71-redrix-charge-limit.rules "$pkgdir/usr/lib/udev/rules.d/71-redrix-charge-limit.rules"
+  install -Dm644 redrix-charge-limit.conf "$pkgdir/etc/redrix-charge-limit.conf"
+}

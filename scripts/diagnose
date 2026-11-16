@@ -1,0 +1,194 @@
+#!/usr/bin/env bash
+# omarchy-redrix diagnose: read-only health check for Linux on the
+# HP Elite Dragonfly Chromebook (REDRIX). Changes nothing; needs no root.
+#
+# Usage: scripts/diagnose [--no-color]
+
+set -u
+export LC_ALL=C
+
+if [[ ${1:-} == "--no-color" || ! -t 1 ]]; then
+  G="" Y="" R="" B="" N=""
+else
+  G=$'\e[32m' Y=$'\e[33m' R=$'\e[31m' B=$'\e[1m' N=$'\e[0m'
+fi
+warns=0 fails=0
+ok()   { printf '  %s[ OK ]%s %s\n' "$G" "$N" "$1"; }
+info() { printf '  [INFO] %s\n' "$1"; }
+warn() { printf '  %s[WARN]%s %s\n' "$Y" "$N" "$1"; [[ -n ${2:-} ]] && printf '         -> %s\n' "$2"; warns=$((warns + 1)); }
+fail() { printf '  %s[FAIL]%s %s\n' "$R" "$N" "$1"; [[ -n ${2:-} ]] && printf '         -> %s\n' "$2"; fails=$((fails + 1)); }
+section() { printf '\n%s%s%s\n' "$B" "$1" "$N"; }
+have() { command -v "$1" >/dev/null 2>&1; }
+readf() { cat "$1" 2>/dev/null; }
+
+# --- Machine -----------------------------------------------------------------
+section "Machine"
+product=$(readf /sys/class/dmi/id/product_name)
+bios=$(readf /sys/class/dmi/id/bios_version)
+if [[ $product == "Redrix" ]]; then
+  ok "Board: REDRIX (HP Elite Dragonfly Chromebook), firmware ${bios:-unknown}"
+else
+  warn "Board is '${product:-unknown}', not Redrix" "Generic checks still apply; board-specific ones may not."
+fi
+[[ $bios == MrChromebox* ]] || info "Firmware is not MrChromebox UEFI ('${bios:-unknown}')"
+info "Kernel $(uname -r)"
+
+# --- Power -------------------------------------------------------------------
+section "Power and charging"
+charger_found=0
+for ps in /sys/class/power_supply/CROS_USBPD_CHARGER*; do
+  [[ -d $ps ]] || continue
+  [[ $(readf "$ps/online") == 1 ]] || continue
+  charger_found=1
+  type=$(grep -o '\[[A-Za-z_]*\]' "$ps/usb_type" 2>/dev/null | tr -d '[]')
+  mv=$(( $(readf "$ps/voltage_now" || echo 0) / 1000 ))
+  ma=$(( $(readf "$ps/current_max" || echo 0) / 1000 ))
+  watts=$(( mv * ma / 1000000 ))
+  name=$(basename "$ps")
+  if [[ $type == PD* ]]; then
+    ok "$name: USB-PD ${mv} mV x ${ma} mA (~${watts} W)"
+    (( watts < 40 )) && warn "PD contract is only ~${watts} W" "Use a 45 W+ charger for full performance while charging."
+  else
+    fail "$name: no USB-PD, only ${type:-unknown} ${mv} mV x ${ma} mA" \
+      "The EC throttles the CPU to its floor (~270-400 MHz) on a supply this weak. Use a 45 W+ USB-C PD charger with a C-to-C cable plugged straight into the laptop; try the other port."
+  fi
+done
+(( charger_found )) || info "Running on battery (no charger online)"
+bat=/sys/class/power_supply/BAT0
+if [[ -d $bat ]]; then
+  info "Battery $(readf $bat/capacity)% $(readf $bat/status)"
+  end=$(readf $bat/charge_control_end_threshold)
+  start=$(readf $bat/charge_control_start_threshold)
+  if [[ -n $end && $end != 100 ]]; then
+    ok "Charge window ${start:-?}-${end}% (cros-charge-control)"
+  elif [[ -n $end ]]; then
+    info "Charges to 100% (optional: redrix-charge-limit package)"
+  fi
+fi
+
+# --- CPU and thermals ----------------------------------------------------------
+section "CPU and thermals"
+pl1=$(readf /sys/class/powercap/intel-rapl:0/constraint_0_power_limit_uw)
+pl2=$(readf /sys/class/powercap/intel-rapl:0/constraint_1_power_limit_uw)
+if [[ -n $pl1 ]]; then
+  pl1w=$(( pl1 / 1000000 )); pl2w=$(( ${pl2:-0} / 1000000 ))
+  if (( pl1w < 15 )); then
+    warn "PL1 (sustained power limit) is ${pl1w} W, PL2 ${pl2w} W" "Firmware default is 15 W; something (usually thermald's DPTF mode) lowered it."
+  else
+    ok "PL1 ${pl1w} W, PL2 ${pl2w} W"
+  fi
+fi
+if have systemctl && [[ $(systemctl is-active thermald 2>/dev/null) == active ]]; then
+  exec_start=$(systemctl show thermald -p ExecStart --value 2>/dev/null)
+  if [[ $exec_start == *--config-file=* ]]; then
+    ok "thermald uses an explicit config (not the ChromeOS DPTF tables)"
+  elif [[ -e /run/thermald/thermal-conf.xml.auto ]]; then
+    warn "thermald applies the ChromeOS DPTF tables (thermal-conf.xml.auto)" \
+      "Under sustained load it holds PL1 at 13 W (~-13% all-core). Install redrix-thermald to guard only the CPU package."
+  else
+    info "thermald active"
+  fi
+else
+  info "thermald not running"
+fi
+have powerprofilesctl && info "Power profile: $(powerprofilesctl get 2>/dev/null)"
+for f in /sys/class/hwmon/hwmon*/name; do
+  [[ $(readf "$f") == cros_ec ]] || continue
+  d=$(dirname "$f"); line=""
+  for t in "$d"/temp*_input; do
+    l=$(readf "${t%_input}_label"); line+="${l:-?} $(( $(readf "$t") / 1000 ))C  "
+  done
+  info "EC sensors: ${line}fans $(readf "$d/fan1_input")/$(readf "$d/fan2_input" || echo -) rpm"
+done
+
+# --- Audio -------------------------------------------------------------------
+section "Audio"
+if grep -q sofrt5682 /proc/asound/cards 2>/dev/null; then
+  ok "SOF card sof-rt5682 present"
+  if [[ -f /usr/share/alsa/ucm2/conf.d/sof-rt5682/sof-rt5682.conf ]]; then
+    ok "ChromeOS UCM profile for sof-rt5682 installed"
+  else
+    fail "No UCM profile for sof-rt5682" "Install the chromebook-audio-adl package (PipeWire shows only 'Dummy Output' without it)."
+  fi
+  dmic=$(readf /sys/module/snd_sof_intel_hda_generic/parameters/dmic_num)
+  if [[ $dmic == 4 ]]; then ok "Internal mic array forced to 4 channels"
+  else warn "dmic_num is '${dmic:-unset}'" "Internal mics need snd_sof_intel_hda_generic dmic_num=4 (chromebook-audio-adl), then reboot."; fi
+  if have amixer; then
+    ctl=$(amixer -c sofrt5682 cget name='Left Current Limit' 2>/dev/null)
+    val=$(sed -n 's/.*: values=//p' <<<"$ctl")
+    lim=$(sed -n "s/.*Item #${val:-x} '\\(.*\\)'.*/\\1/p" <<<"$ctl")
+    if [[ $lim == "2.20A" ]]; then ok "Speaker amp current limit 2.20 A (REDRIX UCM boot settings applied)"
+    elif [[ -n $lim ]]; then warn "Speaker amp current limit is $lim" "Run 'sudo alsactl init && sudo alsactl store' to apply the REDRIX amp limits."; fi
+  fi
+  if have wpctl; then
+    if wpctl status 2>/dev/null | grep -q "Dummy Output"; then fail "PipeWire only has 'Dummy Output'" "UCM missing or WirePlumber not restarted."
+    else ok "PipeWire has real audio sinks"; fi
+  fi
+else
+  info "No sof-rt5682 card (different board or audio not loaded)"
+fi
+
+# --- Camera ------------------------------------------------------------------
+section "Camera"
+sensor=""
+[[ -e /sys/bus/i2c/devices/i2c-OVTI5675:00 ]] && sensor=ov5675
+[[ -e /sys/bus/i2c/devices/i2c-INT3537:00 ]] && sensor=hi556
+if [[ -n $sensor ]]; then
+  ok "MIPI sensor: $sensor (IPU6)"
+  if have pacman && pacman -Q pipewire-libcamera >/dev/null 2>&1; then ok "pipewire-libcamera installed"
+  else fail "pipewire-libcamera not installed" "Install redrix-camera (pulls in libcamera and the PipeWire plugin)."; fi
+  if [[ -r /dev/dma_heap/system && -w /dev/dma_heap/system ]]; then ok "/dev/dma_heap/system accessible (software ISP buffers)"
+  else fail "/dev/dma_heap/system not accessible" "Install redrix-camera (udev uaccess rule), then log out and in."; fi
+  tuning=""
+  for dir in /etc/libcamera/ipa/simple /usr/share/libcamera/ipa/simple; do
+    [[ -f $dir/$sensor.yaml ]] && { tuning=$dir/$sensor.yaml; break; }
+  done
+  if [[ -n $tuning ]]; then ok "Tuning file: $tuning"
+  else warn "No $sensor.yaml tuning: libcamera falls back to uncalibrated.yaml (flat, green image)" \
+    "$( [[ $sensor == ov5675 ]] && echo 'Install redrix-camera.' || echo 'See maximeallanic/redrix-linux (camera component) for a calibrated hi556.yaml.')"; fi
+else
+  info "No IPU6 MIPI sensor found"
+fi
+
+# --- Browsers ----------------------------------------------------------------
+section "Browsers"
+check_flags() {
+  local file=$1 label=$2 n line
+  [[ -f $file ]] || { info "$label: no $(basename "$file")"; return; }
+  n=$(grep -c '^--enable-features=' "$file")
+  (( n > 1 )) && warn "$label: $n --enable-features lines" "Chromium only honours the last one; merge them into one line."
+  line=$(grep '^--enable-features=' "$file" | tail -n1)
+  if [[ $line == *WebRtcPipeWireCamera* ]]; then ok "$label: PipeWire camera enabled"
+  else fail "$label: WebRtcPipeWireCamera not enabled" "Without it the browser opens the raw IPU6 nodes and gets no picture. Run user-config/apply."; fi
+  if [[ $line == *AcceleratedVideoDecodeLinuxGL* ]]; then ok "$label: VA-API video decode enabled"
+  else warn "$label: VA-API video decode not enabled" "Videos decode on the CPU. Run user-config/apply."; fi
+}
+cfg=${XDG_CONFIG_HOME:-$HOME/.config}
+have chromium && check_flags "$cfg/chromium-flags.conf" "Chromium"
+have google-chrome-stable && check_flags "$cfg/chrome-flags.conf" "Chrome"
+if have busctl; then
+  perms=$(busctl --user call org.freedesktop.impl.portal.PermissionStore /org/freedesktop/impl/portal/PermissionStore \
+    org.freedesktop.impl.portal.PermissionStore Lookup ss devices camera 2>/dev/null)
+  if [[ $perms =~ \"([A-Za-z0-9._-]*)\"\ 1\ \"no\" ]]; then
+    warn "Camera portal denies '${BASH_REMATCH[1]:-host apps}'" "That app cannot use the camera. Run user-config/apply --fix-portal, or re-allow it."
+  elif [[ -n $perms ]]; then ok "No camera portal denials"; fi
+fi
+if have vainfo; then
+  if vainfo 2>/dev/null | grep -q 'iHD driver'; then ok "VA-API: Intel iHD driver"
+  else warn "VA-API: iHD driver not working" "Install intel-media-driver."; fi
+fi
+
+# --- Keyboard ----------------------------------------------------------------
+section "Keyboard"
+if have busctl; then
+  sk=$(busctl get-property org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager HandleSuspendKey 2>/dev/null | awk '{print $2}' | tr -d '"')
+  [[ $sk == suspend ]] && info "The top-row lock key sends KEY_SLEEP: systemd-logind suspends immediately (HandleSuspendKey=suspend)"
+fi
+if [[ -f $cfg/hypr/bindings.lua ]] && grep -q 'XF86FullScreen' "$cfg/hypr/bindings.lua"; then
+  ok "Hyprland bindings for the Fullscreen/Overview keys present"
+else
+  info "Fullscreen and Overview keys unbound (user-config/apply adds bindings)"
+fi
+
+printf '\n%s%d warning(s), %d failure(s)%s\n' "$B" "$warns" "$fails" "$N"
+(( fails == 0 ))

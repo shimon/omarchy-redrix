@@ -1,0 +1,20 @@
+# shellcheck shell=bash
+# pacman install script for redrix-charge-limit
+
+post_install() {
+  /usr/lib/redrix-charge-limit/apply
+  echo ":: redrix-charge-limit: charging now stops at the END value in"
+  echo "   /etc/redrix-charge-limit.conf (default 80 %, resumes below 75 %)."
+}
+
+post_upgrade() {
+  /usr/lib/redrix-charge-limit/apply
+}
+
+post_remove() {
+  # Back to the firmware default: always charge to 100 %.
+  B=/sys/class/power_supply/BAT0
+  [ -w "$B/charge_control_start_threshold" ] && echo 0 > "$B/charge_control_start_threshold"
+  [ -w "$B/charge_control_end_threshold" ] && echo 100 > "$B/charge_control_end_threshold"
+  return 0
+}

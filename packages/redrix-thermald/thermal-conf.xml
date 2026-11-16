@@ -1,0 +1,40 @@
+<?xml version="1.0"?>
+<!--
+  redrix-thermald: guard only the CPU package (90 C). The firmware power
+  limits (PL1 15 W / PL2 55 W), the CPU's own TCC (97 C) and the EC fan curve
+  stay in charge. Without an explicit config, thermald exports coreboot's DPTF
+  passive trips (DDR sensor 45 C, "initial reference values only" upstream)
+  and holds PL1 at 13 W under sustained load.
+-->
+<ThermalConfiguration>
+  <Platform>
+    <Name>REDRIX package guard</Name>
+    <ProductName>*</ProductName>
+    <Preference>QUIET</Preference>
+    <ThermalZones>
+      <ThermalZone>
+        <Type>cpu</Type>
+        <TripPoints>
+          <TripPoint>
+            <SensorType>x86_pkg_temp</SensorType>
+            <Temperature>90000</Temperature>
+            <type>passive</type>
+            <ControlType>SEQUENTIAL</ControlType>
+            <CoolingDevice>
+              <index>1</index>
+              <type>rapl_controller</type>
+              <influence>100</influence>
+              <SamplingPeriod>5</SamplingPeriod>
+            </CoolingDevice>
+            <CoolingDevice>
+              <index>2</index>
+              <type>intel_pstate</type>
+              <influence>50</influence>
+              <SamplingPeriod>5</SamplingPeriod>
+            </CoolingDevice>
+          </TripPoint>
+        </TripPoints>
+      </ThermalZone>
+    </ThermalZones>
+  </Platform>
+</ThermalConfiguration>

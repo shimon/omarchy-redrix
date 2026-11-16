@@ -1,0 +1,5 @@
+# libcamera's software ISP allocates frame buffers from /dev/dma_heap/system,
+# which is root-only by default. Grant it to the active seat user (the same
+# rule Omarchy ships for the ThinkPad T14s MIPI camera). CMA heaps stay
+# private.
+SUBSYSTEM=="dma_heap", KERNEL=="system", TAG+="uaccess"
