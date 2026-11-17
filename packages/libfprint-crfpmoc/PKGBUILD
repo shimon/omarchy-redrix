@@ -1,0 +1,49 @@
+# Arch's libfprint 1.94.100 plus the ChromeOS fingerprint Match-on-Chip driver
+# (crfpmoc) for /dev/cros_fp, e.g. the HP Elite Dragonfly Chromebook (REDRIX).
+# Experimental. See docs/fingerprint.md.
+#
+# crfpmoc-v1.94.100.patch = the 36 commits of libfprint MR !512
+# (https://gitlab.freedesktop.org/libfprint/libfprint/-/merge_requests/512,
+# source branch Xelef2000/libfprint feature/crfpmoc @ 5644259), rebased onto
+# v1.94.100 without conflicts, plus three fixes found on REDRIX:
+#   1. FP_MODE requested with no room for its 4-byte reply: cros-ec-spi rejects
+#      it (EMSGSIZE), so enroll fails at once.
+#   2. Wrong GPollableSourceFunc signature: fprintd crashes on the first event.
+#   3. A new random seed on every start: enrolled prints stop working after a
+#      reboot. The seed/context are now kept in /var/lib/fprint/crfpmoc-keys.
+# Regenerate: git format-patch --stdout v1.94.100..HEAD > crfpmoc-v1.94.100.patch
+
+pkgname=libfprint-crfpmoc
+pkgver=1.94.100
+pkgrel=4
+pkgdesc="Library for fingerprint readers, with the ChromeOS FPMCU (crfpmoc) driver from MR !512"
+url="https://gitlab.freedesktop.org/libfprint/libfprint/-/merge_requests/512"
+arch=(x86_64)
+license=(LGPL-2.1-or-later)
+depends=(libgcc glib2 glibc libgudev libgusb openssl pixman)
+makedepends=(git glib2-devel gobject-introspection gtk-doc meson python-cairo python-gobject systemd)
+checkdepends=(cairo umockdev)
+provides=("libfprint=$pkgver" libfprint-2.so)
+conflicts=(libfprint)
+source=("libfprint::git+https://gitlab.freedesktop.org/libfprint/libfprint.git#commit=80a4b5ec612892c5c056c48dddaa561452cf37ec"
+        crfpmoc-v1.94.100.patch)
+sha256sums=('SKIP'
+            '3a87b73a9a941b0179a8ee9a487b2b30254cc9ee37685f568960d914c3201740')
+
+prepare() {
+  cd libfprint
+  git -c user.name=build -c user.email=build@localhost am -q ../crfpmoc-v1.94.100.patch
+}
+
+build() {
+  arch-meson libfprint build -D drivers=all -D installed-tests=false
+  meson compile -C build
+}
+
+check() {
+  meson test -C build --print-errorlogs
+}
+
+package() {
+  meson install -C build --destdir "$pkgdir"
+}

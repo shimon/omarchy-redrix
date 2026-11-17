@@ -197,5 +197,32 @@ else
   info "Fullscreen and Overview keys unbound (user-config/apply adds bindings)"
 fi
 
+# --- Fingerprint -------------------------------------------------------------
+section "Fingerprint"
+if [[ -e /dev/cros_fp ]]; then
+  fpver=$(sed -n 's/^RW version: *//p' /sys/class/chromeos/cros_fp/version 2>/dev/null)
+  info "Fingerprint MCU present (/dev/cros_fp${fpver:+, $fpver})"
+  if pacman -Q libfprint-crfpmoc >/dev/null 2>&1; then
+    ok "libfprint-crfpmoc $(pacman -Q libfprint-crfpmoc 2>/dev/null | awk '{print $2}') installed"
+    if have fprintd-list; then
+      fplist=$(timeout 15 fprintd-list "$USER" 2>&1)
+      if grep -q 'Match-on-Chip' <<<"$fplist"; then
+        if grep -qE '^[[:space:]]*-[[:space:]]*#[0-9]+:' <<<"$fplist"; then ok "fprintd sees the reader; a finger is enrolled"
+        else info "fprintd sees the reader; no finger enrolled (fprintd-enroll)"; fi
+      else
+        warn "fprintd does not list the ChromeOS reader" "sudo systemctl stop fprintd, then retry; see docs/fingerprint.md."
+      fi
+    else
+      info "fprintd not installed (sudo pacman -S fprintd)"
+    fi
+    if grep -qs pam_fprintd.so /etc/pam.d/sudo; then ok "Fingerprint enabled for sudo"
+    else info "Fingerprint not enabled for sudo/lock screen (sudo scripts/enable-fingerprint-auth)"; fi
+  elif pacman -Q libfprint-git >/dev/null 2>&1; then
+    warn "libfprint-git (Omarchy's) has no ChromeOS fingerprint driver" "Install packages/libfprint-crfpmoc; see docs/fingerprint.md."
+  else
+    info "No ChromeOS fingerprint driver installed (optional: packages/libfprint-crfpmoc)"
+  fi
+fi
+
 printf '\n%s%d warning(s), %d failure(s)%s\n' "$B" "$warns" "$fails" "$N"
 (( fails == 0 ))

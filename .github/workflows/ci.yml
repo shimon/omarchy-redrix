@@ -10,7 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: ShellCheck scripts and pacman install files
-        run: shellcheck -x scripts/diagnose user-config/apply packages/*/apply packages/*/*.install
+        run: shellcheck -x scripts/diagnose scripts/enable-fingerprint-auth user-config/apply packages/*/apply packages/*/*.install
 
   makepkg:
     runs-on: ubuntu-latest
@@ -32,4 +32,24 @@ jobs:
       - name: namcap
         run: |
           cd "packages/${{ matrix.package }}"
+          namcap PKGBUILD *.pkg.tar.zst || true
+
+  libfprint-crfpmoc:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build and test dependencies
+        run: |
+          pacman -Syu --noconfirm --needed git namcap libgcc glib2 libgudev libgusb openssl pixman \
+            glib2-devel gobject-introspection gtk-doc meson python-cairo python-gobject systemd cairo umockdev
+      - name: Build and run libfprint's test suite
+        run: |
+          useradd -m builder
+          chown -R builder "$GITHUB_WORKSPACE"
+          cd packages/libfprint-crfpmoc
+          su builder -c "makepkg --noconfirm"
+      - name: namcap
+        run: |
+          cd packages/libfprint-crfpmoc
           namcap PKGBUILD *.pkg.tar.zst || true

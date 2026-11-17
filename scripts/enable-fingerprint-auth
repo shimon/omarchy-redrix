@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# omarchy-redrix: turn on fingerprint authentication for sudo, polkit prompts
+# and the Omarchy lock screen, once a finger is enrolled and verified.
+#
+# This makes the same PAM changes as Omarchy's omarchy-setup-security-fingerprint,
+# so omarchy-remove-security-fingerprint still undoes them. It skips that
+# script's two steps that fail on REDRIX: its reader check (USB only; the
+# FPMCU is on SPI) and its libfprint-git install (no ChromeOS driver; it would
+# replace libfprint-crfpmoc).
+#
+# Usage: sudo scripts/enable-fingerprint-auth   (or: pkexec scripts/enable-fingerprint-auth)
+
+set -euo pipefail
+
+if (( EUID != 0 )); then
+  echo "Run as root: sudo $0" >&2
+  exit 1
+fi
+
+user=${SUDO_USER:-}
+if [[ -z $user && -n ${PKEXEC_UID:-} ]]; then
+  user=$(getent passwd "$PKEXEC_UID" | cut -d: -f1)
+fi
+if [[ -z $user || $user == root ]]; then
+  echo "Could not tell which user this is for; run it with sudo or pkexec from your account." >&2
+  exit 1
+fi
+
+if ! /usr/bin/fprintd-list "$user" 2>/dev/null | grep -qE '^[[:space:]]*-[[:space:]]*#[0-9]+:'; then
+  echo "No enrolled finger for $user. Enroll and test first:" >&2
+  echo "  fprintd-enroll && fprintd-verify" >&2
+  exit 1
+fi
+
+gate="auth      [success=1 default=ignore] pam_exec.so quiet /usr/bin/omarchy-hw-laptop-closed"
+[[ -x /usr/bin/omarchy-hw-laptop-closed ]] || gate=""
+stamp=$(date +%s)
+
+add_fprintd() {
+  local file=$1
+  if ! grep -q pam_fprintd.so "$file"; then
+    cp -p "$file" "$file.bak.$stamp"
+    echo "Backed up $file to $file.bak.$stamp"
+    if head -1 "$file" | grep -q '^#%PAM'; then
+      sed -i '1a auth      sufficient pam_fprintd.so' "$file"
+    else
+      sed -i '1i auth      sufficient pam_fprintd.so' "$file"
+    fi
+  fi
+  # With the lid shut the reader can't be reached: skip straight to the password.
+  if [[ -n $gate ]] && ! grep -q omarchy-hw-laptop-closed "$file"; then
+    sed -i "/pam_fprintd\.so/i $gate" "$file"
+  fi
+}
+
+add_fprintd /etc/pam.d/sudo
+
+if [[ -f /etc/pam.d/polkit-1 ]]; then
+  add_fprintd /etc/pam.d/polkit-1
+else
+  {
+    [[ -n $gate ]] && echo "$gate"
+    cat <<'EOF'
+auth      sufficient pam_fprintd.so
+auth      include system-auth
+
+account   include system-auth
+password  include system-auth
+session   include system-auth
+EOF
+  } > /etc/pam.d/polkit-1
+  echo "Created /etc/pam.d/polkit-1"
+fi
+
+# Lock screen: Omarchy's own helper writes /etc/pam.d/omarchy-lock-fingerprint,
+# the fprintd resume hook and stop timeout when a finger is enrolled.
+if [[ -x /usr/share/omarchy/bin/omarchy-apply-lock ]]; then
+  OMARCHY_INSTALL_USER=$user OMARCHY_PATH=/usr/share/omarchy /usr/share/omarchy/bin/omarchy-apply-lock
+else
+  echo "omarchy-apply-lock not found; lock screen not configured (not Omarchy?)" >&2
+fi
+
+echo
+echo "Done. Test with: sudo -k; sudo true   and Super+Ctrl+L. Your password still works as a fallback."
+echo "Undo with: omarchy-remove-security-fingerprint (it also removes fprintd), or restore the .bak files."

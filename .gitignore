@@ -5,6 +5,7 @@ packages/*/*.pkg.tar.*
 packages/*/*.log
 packages/chromebook-audio-adl/alsa-ucm-conf-cros/
 packages/chromebook-audio-adl/chromebook-linux-audio/
+packages/libfprint-crfpmoc/libfprint/
 # local captures and backups
 *.ppm
 *.png

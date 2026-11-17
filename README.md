@@ -5,7 +5,7 @@ family) running MrChromebox UEFI firmware: what was broken, why, and pacman pack
 
 Tested on one machine: i5-1245U, 16 GB, OV5675 camera, MrChromebox 2603.2, Omarchy with kernel 7.2, November 2026.
 
-For components outside Omarchy/Arch packaging (Google's speaker DSM files, S3 suspend, fingerprint, haptics, pen,
+For components outside Omarchy/Arch packaging (Google's speaker DSM files, S3 suspend, haptics, pen,
 a chart-calibrated tuning for the Hi-556 camera variant), see
 **[maximeallanic/redrix-linux](https://github.com/maximeallanic/redrix-linux)** (Debian/GNOME-focused). This repo
 covers the Omarchy side and a few findings that apply to any distro.
@@ -24,10 +24,11 @@ covers the Omarchy side and a few findings that apply to any distro.
 | Battery longevity | Charges to 100 % | `redrix-charge-limit` (opt-in): stop at 80 %, resume below 75 % |
 | Brightness, volume, mute, mic mute, kbd backlight, play/pause, screenshot keys | Work (Omarchy bindings) | - |
 | Touchpad, touchscreen, Wi-Fi, Bluetooth, GPU (i915 + GuC/HuC) | Work | - |
+| SD card reader (Genesys GL9755) | Works (`sdhci-pci`) | - |
 | Suspend / resume (s2idle) | Works: lid close/open, 99.6 % of a 6.6-minute suspend in hardware sleep (S0ix), all devices restored. The power-button LED goes **off** while suspended | - |
 | Power profiles | Omarchy already switches performance (AC) / balanced (battery) | - |
 | Lock key | **Suspends immediately** (sends `KEY_SLEEP`) | Documented; [redrix-linux](https://github.com/maximeallanic/redrix-linux) has a fix |
-| Fingerprint reader | Not supported by Arch's libfprint | Not covered; see redrix-linux |
+| Fingerprint reader | Not supported by Arch's libfprint; Omarchy's fingerprint setup can't see it | `libfprint-crfpmoc` (experimental) + `scripts/enable-fingerprint-auth`: sudo, polkit and lock screen, survives reboots |
 
 ## Quick start
 
@@ -44,6 +45,7 @@ cd packages/chromebook-audio-adl && makepkg -si && cd -   # audio; reboot afterw
 cd packages/redrix-camera        && makepkg -si && cd -   # webcam
 cd packages/redrix-thermald      && makepkg -si && cd -   # full 15 W sustained power limit
 cd packages/redrix-charge-limit  && makepkg -si && cd -   # optional: 75-80 % charge window
+cd packages/libfprint-crfpmoc    && makepkg -si && cd -   # optional, experimental: fingerprint (see docs/fingerprint.md)
 user-config/apply --dry-run      # browser flags + Hyprland bindings; drop --dry-run to apply
 ```
 
@@ -111,6 +113,16 @@ Full scancode/keycode map in [docs/top-row.md](docs/top-row.md). Most keys alrea
 (`XF86FullScreen`) and Overview (`XF86LaunchA`) do nothing until bound, and the lock key sends `KEY_SLEEP`, which
 systemd-logind turns into an immediate suspend.
 
+### 6. Fingerprint: an unmerged driver and three fixes
+
+The fingerprint MCU (`/dev/cros_fp`, FPC1025 sensor) matches on-chip, ChromeOS-style. Arch's libfprint has no driver
+for it; libfprint [MR !512](https://gitlab.freedesktop.org/libfprint/libfprint/-/merge_requests/512) (`crfpmoc`) does,
+but on REDRIX it failed to enroll, then crashed fprintd, then lost every enrolled finger on reboot (it set a new
+random encryption seed on each start). `libfprint-crfpmoc` is Arch's libfprint plus MR !512 plus fixes for all three.
+Omarchy's `omarchy-setup-security-fingerprint` must not be used here: it only detects USB readers and would replace
+the driver with its own `libfprint-git`. `scripts/enable-fingerprint-auth` makes the same PAM changes instead. Setup,
+details and security notes: [docs/fingerprint.md](docs/fingerprint.md).
+
 ## Troubleshooting
 
 **Battery draining, or very slow, while plugged in? Try the other USB-C port first.** On our unit the **right** port
@@ -131,7 +143,9 @@ on either port; use a 45 W+ USB-C PD charger.
 | `packages/redrix-camera` | libcamera/PipeWire dependencies, dma-heap udev rule, OV5675 tuning |
 | `packages/redrix-thermald` | thermald drop-in and package-only config |
 | `packages/redrix-charge-limit` | Opt-in charge window via `cros-charge-control` |
-| `docs/` | Top-row map, camera tuning method |
+| `packages/libfprint-crfpmoc` | libfprint with the ChromeOS fingerprint driver (MR !512 + REDRIX fixes, LGPL patch) |
+| `scripts/enable-fingerprint-auth` | Fingerprint for sudo, polkit and the lock screen (run as root after enrolling) |
+| `docs/` | Top-row map, camera tuning method, fingerprint |
 
 ## Contributing
 
@@ -143,4 +157,5 @@ the output of `scripts/diagnose --no-color`. Hardware fixes that are not Omarchy
 
 MIT, see [LICENSE](LICENSE). Third-party files are fetched at build time, not stored here; see
 [NOTICE.md](NOTICE.md). Thanks to WeirdTreeThing (audio UCM and configs), MrChromebox (firmware), the chrultrabook
-community, and the libcamera developers.
+community, the libcamera developers, and the libfprint developers and MR !512's authors (Abhinav Baid,
+Marco Trevisan and others).
