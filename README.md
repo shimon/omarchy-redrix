@@ -3,6 +3,9 @@
 **Omarchy Linux (Arch + Hyprland) on the HP Elite Dragonfly Chromebook (board `redrix`, Intel Alder Lake, Google "brya"
 family) running MrChromebox UEFI firmware: what was broken, why, and pacman packages that fix it.**
 
+**New to this laptop?** [How to get the best value Omarchy machine ever](docs/best-value-omarchy-machine.md) covers
+buying a used one, unlocking and replacing the firmware, installing Omarchy, and then using this repo.
+
 Tested on one machine: i5-1245U, 16 GB, OV5675 camera, MrChromebox 2603.2, Omarchy with kernel 7.2, November 2026.
 
 For components outside Omarchy/Arch packaging (Google's speaker DSM files, S3 suspend, haptics, pen,
@@ -145,7 +148,7 @@ on either port; use a 45 W+ USB-C PD charger.
 | `packages/redrix-charge-limit` | Opt-in charge window via `cros-charge-control` |
 | `packages/libfprint-crfpmoc` | libfprint with the ChromeOS fingerprint driver (MR !512 + REDRIX fixes, LGPL patch) |
 | `scripts/enable-fingerprint-auth` | Fingerprint for sudo, polkit and the lock screen (run as root after enrolling) |
-| `docs/` | Top-row map, camera tuning method, fingerprint |
+| `docs/` | Buying-to-working guide, top-row map, camera tuning method, fingerprint |
 
 ## Contributing
 
