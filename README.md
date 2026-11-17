@@ -113,9 +113,13 @@ systemd-logind turns into an immediate suspend.
 
 ## Troubleshooting
 
-**Very slow while plugged in?** If the charger doesn't negotiate USB Power Delivery (a 5 V USB-A charger or
-adapter, for example), the EC holds the CPU at its minimum clock. `scripts/diagnose` flags this; use a 45 W+
-USB-C PD charger.
+**Battery draining, or very slow, while plugged in? Try the other USB-C port first.** On our unit the **right** port
+(`CROS_USBPD_CHARGER1`) never negotiates USB Power Delivery with any orientation of the plug: it gets only 5 V /
+0.5 A, so the battery drains and the EC holds the CPU at its minimum clock (~270-400 MHz). The same charger and cable
+in the **left** port (`CROS_USBPD_CHARGER0`) get 19.4 V / 3 A within two seconds. We have not yet established whether
+this is a hardware fault on our unit or the custom EC firmware; reports from other REDRIX owners are welcome.
+`scripts/diagnose` flags a non-PD charger and names the port. A 5 V USB-A charger or adapter causes the same symptom
+on either port; use a 45 W+ USB-C PD charger.
 
 ## Repository layout
 

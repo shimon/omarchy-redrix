@@ -45,12 +45,13 @@ for ps in /sys/class/power_supply/CROS_USBPD_CHARGER*; do
   ma=$(( $(readf "$ps/current_max" || echo 0) / 1000 ))
   watts=$(( mv * ma / 1000000 ))
   name=$(basename "$ps")
+  case $name in *CHARGER0) side="left" ;; *CHARGER1) side="right" ;; *) side="" ;; esac
   if [[ $type == PD* ]]; then
     ok "$name: USB-PD ${mv} mV x ${ma} mA (~${watts} W)"
     (( watts < 40 )) && warn "PD contract is only ~${watts} W" "Use a 45 W+ charger for full performance while charging."
   else
-    fail "$name: no USB-PD, only ${type:-unknown} ${mv} mV x ${ma} mA" \
-      "The EC throttles the CPU to its floor (~270-400 MHz) on a supply this weak. Use a 45 W+ USB-C PD charger with a C-to-C cable plugged straight into the laptop; try the other port."
+    fail "$name${side:+ ($side port)}: no USB-PD, only ${type:-unknown} ${mv} mV x ${ma} mA" \
+      "Try the other USB-C port first: on our unit the right port never negotiates PD. On a supply this weak the battery drains and the EC throttles the CPU to its floor (~270-400 MHz). Otherwise use a 45 W+ USB-C PD charger with a C-to-C cable plugged straight into the laptop."
   fi
 done
 (( charger_found )) || info "Running on battery (no charger online)"
