@@ -1,0 +1,30 @@
+# Hybrid sleep after a delay for laptops whose suspend can end in a power loss
+# (tested: HP Elite Dragonfly Chromebook / REDRIX, s2idle, Omarchy).
+#
+# Lid close -> suspend-then-hibernate; after 5 min the system writes a
+# hibernation image and stays in RAM sleep (HibernateMode=suspend). Waking
+# within or after the delay is instant; if power is lost while asleep, the next
+# boot restores the session. Needs working hibernation (omarchy-hibernation-setup).
+# Removing the package restores Omarchy's plain suspend on lid close.
+
+pkgname=redrix-hybrid-sleep
+pkgver=2026.11.18
+pkgrel=1
+pkgdesc="Lid close suspends, then writes a hibernation image after 5 min and keeps sleeping (hybrid sleep after a delay)"
+arch=('any')
+url="https://github.com/shimon/omarchy-redrix"
+license=('MIT')
+depends=('systemd')
+install=redrix-hybrid-sleep.install
+source=('LICENSE'
+        '50-redrix-hybrid-sleep.conf'
+        '50-redrix-lid-hybrid-sleep.conf')
+sha256sums=('8f07e5865a84a895a09f26aee71da1c787a7e1572308280eb208369f9fb3d4b5'
+            '8430474feb6802a8e3ca908ce995bb82747e6d6e49f82861d4974b34eb72f8e4'
+            'cda8bcfed419aff428bf350d8ed114016b25ccd481949d0f3a92ac49f8fbc810')
+
+package() {
+  install -Dm644 50-redrix-hybrid-sleep.conf "$pkgdir/usr/lib/systemd/sleep.conf.d/50-redrix-hybrid-sleep.conf"
+  install -Dm644 50-redrix-lid-hybrid-sleep.conf "$pkgdir/usr/lib/systemd/logind.conf.d/50-redrix-lid-hybrid-sleep.conf"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

@@ -1,0 +1,40 @@
+# shellcheck shell=bash
+# pacman install script for redrix-hybrid-sleep
+
+_reload_logind() {
+  # SIGHUP reloads logind.conf without ending the session.
+  systemctl kill -s HUP systemd-logind.service >/dev/null 2>&1
+}
+
+_check_hibernation() {
+  local ok=1
+  if command -v omarchy-hibernation-available >/dev/null 2>&1; then
+    omarchy-hibernation-available || ok=0
+  else
+    grep -qw disk /sys/power/state 2>/dev/null || ok=0
+    grep -q 'resume=' /proc/cmdline || ok=0
+  fi
+  if (( ! ok )); then
+    echo ":: WARNING: hibernation is not set up, so the image cannot be written or restored."
+    echo "   On Omarchy run: omarchy-hibernation-setup   (then reboot)"
+  fi
+  if ! grep -q 'rtc_cmos.use_acpi_alarm=1' /proc/cmdline; then
+    echo ":: WARNING: rtc_cmos.use_acpi_alarm=1 is not on the kernel command line; on s2idle the"
+    echo "   5-minute RTC wake may never fire. omarchy-hibernation-setup adds it; reboot after."
+  fi
+}
+
+post_install() {
+  _reload_logind
+  _check_hibernation
+  echo ":: redrix-hybrid-sleep: closing the lid now suspends; after 5 min the laptop writes a"
+  echo "   hibernation image and keeps sleeping in RAM. Test: systemctl hibernate, then power on."
+}
+
+post_upgrade() {
+  _reload_logind
+}
+
+post_remove() {
+  _reload_logind
+}

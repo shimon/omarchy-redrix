@@ -67,6 +67,37 @@ if [[ -d $bat ]]; then
   fi
 fi
 
+# --- Sleep -------------------------------------------------------------------
+section "Sleep"
+lid=""
+if have busctl; then
+  lid=$(busctl get-property org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager HandleLidSwitch 2>/dev/null | awk '{print $2}' | tr -d '"')
+fi
+hib_ok=0
+if have omarchy-hibernation-available; then
+  omarchy-hibernation-available && hib_ok=1
+elif grep -qw disk /sys/power/state 2>/dev/null && grep -q 'resume=' /proc/cmdline; then
+  hib_ok=1
+fi
+if (( hib_ok )); then ok "Hibernation is set up (swap + resume=)"
+else info "Hibernation not set up (Omarchy: omarchy-hibernation-setup)"; fi
+sleepcfg=$(systemd-analyze cat-config systemd/sleep.conf 2>/dev/null)
+hmode=$(sed -n 's/^HibernateMode=//p' <<<"$sleepcfg" | tail -1)
+hdelay=$(sed -n 's/^HibernateDelaySec=//p' <<<"$sleepcfg" | tail -1)
+if [[ $lid == suspend-then-hibernate ]]; then
+  if (( ! hib_ok )); then
+    fail "Lid close is suspend-then-hibernate but hibernation is not set up" "Run omarchy-hibernation-setup and reboot, or remove redrix-hybrid-sleep."
+  elif [[ $hmode == suspend* ]]; then
+    ok "Lid close: hybrid sleep after ${hdelay:-the systemd default delay} (image written, stays in RAM)"
+  else
+    ok "Lid close: suspend, then hibernate (power off) after ${hdelay:-the systemd default delay}"
+  fi
+  grep -q 'rtc_cmos.use_acpi_alarm=1' /proc/cmdline ||
+    warn "rtc_cmos.use_acpi_alarm=1 missing from the kernel command line" "On s2idle the delayed wake may never fire; omarchy-hibernation-setup adds it."
+else
+  info "Lid close: ${lid:-unknown} (optional: redrix-hybrid-sleep keeps a hibernation image after 5 min asleep)"
+fi
+
 # --- CPU and thermals ----------------------------------------------------------
 section "CPU and thermals"
 pl1=$(readf /sys/class/powercap/intel-rapl:0/constraint_0_power_limit_uw)

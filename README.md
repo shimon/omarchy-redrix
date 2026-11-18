@@ -29,6 +29,7 @@ covers the Omarchy side and a few findings that apply to any distro.
 | Touchpad, touchscreen, Wi-Fi, Bluetooth, GPU (i915 + GuC/HuC) | Work | - |
 | SD card reader (Genesys GL9755) | Works (`sdhci-pci`) | - |
 | Suspend / resume (s2idle) | Works: lid close/open, 99.6 % of a 6.6-minute suspend in hardware sleep (S0ix), all devices restored. The power-button LED goes **off** while suspended | - |
+| Losing the session if power fails while asleep | Lid close is a plain suspend: a power loss means a fresh boot | `redrix-hybrid-sleep` (opt-in): after 5 min asleep a hibernation image is written and the laptop keeps sleeping in RAM |
 | Power profiles | Omarchy already switches performance (AC) / balanced (battery) | - |
 | Lock key | **Suspends immediately** (sends `KEY_SLEEP`) | Documented; [redrix-linux](https://github.com/maximeallanic/redrix-linux) has a fix |
 | Fingerprint reader | Not supported by Arch's libfprint; Omarchy's fingerprint setup can't see it | `libfprint-crfpmoc` (experimental) + `scripts/enable-fingerprint-auth`: sudo, polkit and lock screen, survives reboots |
@@ -48,12 +49,14 @@ cd packages/chromebook-audio-adl && makepkg -si && cd -   # audio; reboot afterw
 cd packages/redrix-camera        && makepkg -si && cd -   # webcam
 cd packages/redrix-thermald      && makepkg -si && cd -   # full 15 W sustained power limit
 cd packages/redrix-charge-limit  && makepkg -si && cd -   # optional: 75-80 % charge window
+cd packages/redrix-hybrid-sleep  && makepkg -si && cd -   # optional: hibernation image after 5 min asleep (needs omarchy-hibernation-setup)
 cd packages/libfprint-crfpmoc    && makepkg -si && cd -   # optional, experimental: fingerprint (see docs/fingerprint.md)
 user-config/apply --dry-run      # browser flags + Hyprland bindings; drop --dry-run to apply
 ```
 
 Remove any of them with `sudo pacman -R <package>`; each puts things back (the charge limit returns to 100 %,
-thermald to its default mode). `user-config/apply` backs up every file it edits as `<file>.bak.<timestamp>`.
+thermald to its default mode, lid close to a plain suspend). `user-config/apply` backs up every file it edits as
+`<file>.bak.<timestamp>`.
 
 ## Findings
 
@@ -126,6 +129,25 @@ Omarchy's `omarchy-setup-security-fingerprint` must not be used here: it only de
 the driver with its own `libfprint-git`. `scripts/enable-fingerprint-auth` makes the same PAM changes instead. Setup,
 details and security notes: [docs/fingerprint.md](docs/fingerprint.md).
 
+### 7. Hybrid sleep after a delay
+
+Our unit sometimes powered off while suspended (on battery and on AC) and booted fresh when the lid was opened,
+losing the session. Hibernation itself works (Omarchy's `omarchy-hibernation-setup`: swapfile, `resume=`,
+`rtc_cmos.use_acpi_alarm=1`), so `redrix-hybrid-sleep` uses it as a safety net without making every wake slow:
+
+- Lid close runs systemd's `suspend-then-hibernate` (`HandleLidSwitch` and `HandleLidSwitchExternalPower`).
+- After `HibernateDelaySec=5min` the RTC wakes the laptop, it writes the image (~3.5 GB compressed from ~5.5 GB,
+  4-9 s on the stock NVMe) and, because `HibernateMode=suspend`, goes **back to RAM sleep** instead of powering off.
+- Opening the lid at any point is an instant resume from RAM, with no disk password; the kernel discards the image.
+  Only if power is lost does the next boot ask for the LUKS password and restore the session from disk.
+
+Short moves around the house (under 5 minutes) cost no disk writes. Side effects: `systemctl hibernate` (and the
+Omarchy menu's Hibernate) also stays in RAM after writing the image, Omarchy's Suspend menu entry and idle suspend
+remain plain suspends, and systemd logs a harmless "Sleep mode 'suspend' should not be used by operation hibernate"
+notice. Change the delay in `/etc/systemd/sleep.conf.d/60-local.conf`. Test the restore path once with
+`systemctl hibernate` (power on, unlock, the session comes back). Holding the power button with the lid closed does
+**not** force the laptop off, so a forced power loss can't easily be simulated.
+
 ## Troubleshooting
 
 **Battery draining, or very slow, while plugged in? Try the other USB-C port first.** On our unit the **right** port
@@ -135,6 +157,13 @@ in the **left** port (`CROS_USBPD_CHARGER0`) get 19.4 V / 3 A within two seconds
 this is a hardware fault on our unit or the custom EC firmware; reports from other REDRIX owners are welcome.
 `scripts/diagnose` flags a non-PD charger and names the port. A 5 V USB-A charger or adapter causes the same symptom
 on either port; use a 45 W+ USB-C PD charger.
+
+**Laptop powers off by itself while asleep, or when moved?** Right after it happens (before the EC goes into its own
+low-power state, about an hour on battery), run `sudo ectool uptimeinfo`. `shutdown: power failure` in *Most recent
+AP reset causes* means the main power rails collapsed on their own: a hardware fault, not Linux or the firmware. On
+our unit this happened when the laptop was moved; disconnecting and reseating the internal connections (battery
+cable included) stopped it, so far. `redrix-hybrid-sleep` protects the session in the meantime. AUR `chromium-ectool`
+fails to build `cbi-util` with current GCC, but its `build/host/util/ectool` binary builds and works.
 
 ## Repository layout
 
@@ -146,6 +175,7 @@ on either port; use a 45 W+ USB-C PD charger.
 | `packages/redrix-camera` | libcamera/PipeWire dependencies, dma-heap udev rule, OV5675 tuning |
 | `packages/redrix-thermald` | thermald drop-in and package-only config |
 | `packages/redrix-charge-limit` | Opt-in charge window via `cros-charge-control` |
+| `packages/redrix-hybrid-sleep` | Opt-in: lid close suspends, then writes a hibernation image after 5 min and keeps sleeping |
 | `packages/libfprint-crfpmoc` | libfprint with the ChromeOS fingerprint driver (MR !512 + REDRIX fixes, LGPL patch) |
 | `scripts/enable-fingerprint-auth` | Fingerprint for sudo, polkit and the lock screen (run as root after enrolling) |
 | `docs/` | Buying-to-working guide, top-row map, camera tuning method, fingerprint |
